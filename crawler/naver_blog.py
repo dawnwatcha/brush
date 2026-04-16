@@ -2,6 +2,7 @@ import time
 import re
 from urllib.parse import quote, urlparse
 from crawler.base import BaseCrawler
+from utils.http_client import fetch
 import config
 
 
@@ -14,84 +15,54 @@ class NaverBlogCrawler(BaseCrawler):
         self.driver = None
 
     def search_posts(self, board_url, keyword, max_pages):
-        """네이버 블로그 내에서 키워드를 검색합니다.
+        """네이버 통합검색(전체 네이버 블로그)에서 키워드를 검색합니다.
 
-        검색 URL: https://blog.naver.com/PostSearchList.naver?blogId=블로그아이디&searchText=키워드
+        검색 URL: https://search.naver.com/search.naver?where=blog&query=키워드&start=N
+        start는 1, 11, 21, ... (페이지당 10개)
+        board_url은 무시됩니다.
         """
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
-
-        self._ensure_driver()
-
-        # 블로그 ID 추출
-        # 예: https://blog.naver.com/blogid -> blogid
-        # 예: https://blog.naver.com/PostList.naver?blogId=blogid -> blogid
-        blog_id = ""
-        match = re.search(r"blogId=([^&]+)", board_url)
-        if match:
-            blog_id = match.group(1)
-        else:
-            path = urlparse(board_url).path.strip("/")
-            if path:
-                blog_id = path.split("/")[0]
-
-        if not blog_id:
-            print("    [경고] 블로그 ID를 찾을 수 없습니다.")
-            return []
-
         posts = []
+        seen_urls = set()
         encoded_kw = quote(keyword)
+        blog_post_pattern = re.compile(r"^https://blog\.naver\.com/[^/?#]+/\d+")
 
-        for page in range(1, max_pages + 1):
-            search_url = (
-                f"https://blog.naver.com/PostSearchList.naver?"
-                f"blogId={blog_id}&searchText={encoded_kw}&currentPage={page}"
+        for page in range(max_pages):
+            start = page * 10 + 1
+            url = (
+                f"https://search.naver.com/search.naver?"
+                f"where=blog&query={encoded_kw}&start={start}"
             )
 
-            self.driver.get(search_url)
-            time.sleep(2)
+            soup = fetch(url, headers={"Referer": "https://search.naver.com/"})
+            if soup is None:
+                continue
 
-            try:
-                self.driver.switch_to.default_content()
-                iframe = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.ID, "mainFrame"))
-                )
-                self.driver.switch_to.frame(iframe)
-            except Exception:
-                pass
+            # 블로그 게시글 URL 패턴에 매칭되는 모든 링크 수집
+            # 같은 URL에 여러 번 링크가 있을 수 있으므로 가장 긴 텍스트(= 제목)를 고름
+            url_to_title = {}
+            for link in soup.select("a[href]"):
+                href = link.get("href", "")
+                m = blog_post_pattern.match(href)
+                if not m:
+                    continue
+                clean_url = m.group()
+                text = link.get_text(strip=True)
+                if not text or "네이버 블로그" in text:
+                    continue
+                # 더 긴 제목으로 교체
+                if clean_url not in url_to_title or len(text) > len(url_to_title[clean_url]):
+                    url_to_title[clean_url] = text
 
-            try:
-                # 검색 결과 항목들
-                links = self.driver.find_elements(
-                    By.CSS_SELECTOR,
-                    "a.url, span.title a, a.pcol2, table.search a, div.search_list a"
-                )
+            found_in_page = 0
+            for clean_url, title in url_to_title.items():
+                if clean_url in seen_urls:
+                    continue
+                seen_urls.add(clean_url)
+                posts.append({"url": clean_url, "title": title, "date": ""})
+                found_in_page += 1
 
-                found_in_page = 0
-                for link in links:
-                    try:
-                        href = link.get_attribute("href") or ""
-                        title = link.text.strip()
-                        if not href or not title:
-                            continue
-                        if "blog.naver.com" not in href:
-                            continue
-                        if "PostSearchList" in href or "PostList" in href:
-                            continue
-
-                        posts.append({"url": href, "title": title, "date": ""})
-                        found_in_page += 1
-                    except Exception:
-                        continue
-
-                if found_in_page == 0:
-                    self.driver.switch_to.default_content()
-                    break
-            except Exception:
-                pass
-
-            self.driver.switch_to.default_content()
+            if found_in_page == 0:
+                break
 
         return posts
 

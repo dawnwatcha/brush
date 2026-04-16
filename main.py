@@ -22,42 +22,49 @@ SITES = {
         "class": "crawler.naver_cafe.NaverCafeCrawler",
         "example": "https://cafe.naver.com/카페이름",
         "note": "* config.py에 네이버 아이디/비밀번호 입력 필요",
+        "global_search": False,
     },
     "2": {
         "name": "네이버 블로그",
         "class": "crawler.naver_blog.NaverBlogCrawler",
         "example": "https://blog.naver.com/블로그아이디",
-        "note": "",
+        "note": "키워드 입력 시 네이버 전체 블로그 검색",
+        "global_search": True,
     },
     "3": {
         "name": "디시인사이드",
         "class": "crawler.dcinside.DcinsideCrawler",
         "example": "https://gall.dcinside.com/board/lists/?id=갤러리아이디",
-        "note": "유저 IP 수집 가능",
+        "note": "키워드 입력 시 전체 사이트 검색 (IP 수집 가능)",
+        "global_search": True,
     },
     "4": {
         "name": "에펨코리아",
         "class": "crawler.fmkorea.FmkoreaCrawler",
         "example": "https://www.fmkorea.com/best",
         "note": "",
+        "global_search": False,
     },
     "5": {
         "name": "루리웹",
         "class": "crawler.ruliweb.RuliwebCrawler",
         "example": "https://bbs.ruliweb.com/community/board/300143",
         "note": "",
+        "global_search": False,
     },
     "6": {
         "name": "뽐뿌",
         "class": "crawler.ppomppu.PpomppuCrawler",
         "example": "https://www.ppomppu.co.kr/zboard/zboard.php?id=freeboard",
         "note": "",
+        "global_search": False,
     },
     "7": {
         "name": "클리앙",
         "class": "crawler.clien.ClienCrawler",
         "example": "https://www.clien.net/service/board/park",
         "note": "",
+        "global_search": False,
     },
 }
 
@@ -144,6 +151,7 @@ def change_max_pages():
 
 def run_crawl(site_key):
     site = SITES[site_key]
+    is_global_search = site.get("global_search", False)
 
     print()
     print("  [" + site["name"] + "] 크롤링을 시작합니다.")
@@ -151,19 +159,27 @@ def run_crawl(site_key):
         print("  " + site["note"])
 
     print()
-    print("  게시판 주소를 입력하세요.")
+    if is_global_search:
+        print("  게시판 주소를 입력하세요. (키워드로 전체 검색할 경우 Enter)")
+    else:
+        print("  게시판 주소를 입력하세요.")
     print("  예: " + site["example"])
     print()
 
     board_url = input("  주소: ").strip()
-    if not board_url:
+
+    # 전체 검색 사이트가 아닌데 주소를 입력 안 했으면 종료
+    if not board_url and not is_global_search:
         print("  주소가 입력되지 않았습니다.")
         return
 
     # 키워드 설정
     if not config.KEYWORDS:
         print()
-        print("  키워드가 설정되어 있지 않습니다.")
+        if not board_url and is_global_search:
+            print("  전체 검색 모드입니다. 키워드 입력이 필수입니다.")
+        else:
+            print("  키워드가 설정되어 있지 않습니다.")
         kw_input = input("  키워드를 입력하세요 (없으면 Enter): ").strip()
         if kw_input:
             keywords = [kw.strip() for kw in kw_input.split(",") if kw.strip()]
@@ -171,6 +187,11 @@ def run_crawl(site_key):
             keywords = []
     else:
         keywords = config.KEYWORDS
+
+    # 전체 검색 사이트인데 주소도 키워드도 없으면 종료
+    if not board_url and is_global_search and not keywords:
+        print("  주소나 키워드 중 하나는 입력해야 합니다.")
+        return
 
     # 크롤러 생성 및 실행
     try:
