@@ -1,0 +1,25 @@
+# Python 캐시 파일
+__pycache__/
+*.pyc
+*.pyo
+
+# 크롤링 결과 (개인정보 포함, 공유 금지)
+output/
+
+# 가상환경
+venv/
+env/
+.venv/
+
+# IDE 설정 파일
+.vscode/
+.idea/
+
+# OS 생성 파일
+Thumbs.db
+.DS_Store
+
+# 주의: config.py에 네이버 비밀번호를 입력한 후에는
+# 절대 commit하지 마세요!
+# 비밀번호 입력 후 추적하지 않으려면 아래 줄의 # 을 삭제하세요.
+# config.py
