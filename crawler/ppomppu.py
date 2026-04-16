@@ -1,3 +1,4 @@
+from urllib.parse import quote, urlparse, parse_qs
 from crawler.base import BaseCrawler
 from utils.http_client import fetch
 
@@ -6,6 +7,72 @@ class PpomppuCrawler(BaseCrawler):
     """뽐뿌 크롤러"""
 
     site_name = "뽐뿌"
+
+    def search_posts(self, board_url, keyword, max_pages):
+        """뽐뿌 게시판 내에서 키워드를 검색합니다.
+
+        검색 URL: https://www.ppomppu.co.kr/search_bbs.php?search_type=sub_memo&keyword=키워드&bbs_cate=게시판&page_size=20
+        search_type:
+          - subject: 제목만
+          - sub_memo: 제목+내용
+          - nick: 글쓴이
+        """
+        # 게시판 ID 추출 (예: id=freeboard)
+        parsed = urlparse(board_url)
+        qs = parse_qs(parsed.query)
+        board_id = qs.get("id", [""])[0]
+
+        posts = []
+        encoded_kw = quote(keyword, encoding="utf-8")
+
+        for page in range(1, max_pages + 1):
+            url = (
+                f"https://www.ppomppu.co.kr/search_bbs.php?"
+                f"search_type=sub_memo&keyword={encoded_kw}"
+                f"&bbs_cate={board_id}&page_size=20&page={page}"
+            )
+
+            soup = fetch(url, encoding="utf-8")
+            if soup is None:
+                continue
+
+            # 검색 결과 항목들
+            items = soup.select("table.info_table tr") or soup.select("tr.baseList-border-bottom")
+            if not items:
+                # 다른 구조 시도
+                items = soup.select("div.search_result li, td.list_vspace")
+
+            found_in_page = 0
+            for item in items:
+                try:
+                    link_el = item.select_one("a[href*='view.php'], a.list_b, a.baseList-title")
+                    if not link_el:
+                        continue
+
+                    href = link_el.get("href", "")
+                    if not href:
+                        continue
+                    if not href.startswith("http"):
+                        href = "https://www.ppomppu.co.kr/zboard/" + href.lstrip("/")
+
+                    title = link_el.get_text(strip=True)
+                    if not title:
+                        continue
+
+                    posts.append({
+                        "url": href,
+                        "title": title,
+                        "date": "",
+                        "author": "",
+                    })
+                    found_in_page += 1
+                except Exception:
+                    continue
+
+            if found_in_page == 0:
+                break
+
+        return posts
 
     def get_post_list(self, board_url, max_pages):
         """뽐뿌 게시판에서 게시글 목록을 가져옵니다.

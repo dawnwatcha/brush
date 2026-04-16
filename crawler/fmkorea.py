@@ -1,3 +1,4 @@
+from urllib.parse import quote, urlparse, parse_qs
 from crawler.base import BaseCrawler
 from utils.http_client import fetch
 
@@ -6,6 +7,80 @@ class FmkoreaCrawler(BaseCrawler):
     """에펨코리아 크롤러"""
 
     site_name = "에펨코리아"
+
+    def search_posts(self, board_url, keyword, max_pages):
+        """에펨코리아 게시판 내에서 키워드를 검색합니다.
+
+        검색 URL 예시:
+        https://www.fmkorea.com/index.php?mid=best&search_keyword=키워드&search_target=title_content
+        """
+        # 게시판 mid 추출
+        # 예: https://www.fmkorea.com/best -> mid=best
+        # 예: https://www.fmkorea.com/index.php?mid=football -> mid=football
+        parsed = urlparse(board_url)
+        mid = ""
+
+        qs = parse_qs(parsed.query)
+        if "mid" in qs:
+            mid = qs["mid"][0]
+        elif parsed.path and parsed.path != "/":
+            # path가 /best 형식인 경우
+            mid = parsed.path.strip("/").split("/")[0]
+
+        if not mid:
+            print("    [경고] 게시판 ID(mid)를 찾을 수 없습니다.")
+            return []
+
+        posts = []
+        encoded_kw = quote(keyword)
+
+        for page in range(1, max_pages + 1):
+            url = (
+                f"https://www.fmkorea.com/index.php?mid={mid}"
+                f"&search_keyword={encoded_kw}&search_target=title_content&page={page}"
+            )
+
+            soup = fetch(url, headers={"Referer": "https://www.fmkorea.com/"})
+            if soup is None:
+                continue
+
+            rows = soup.select("table.bd_lst tbody tr")
+            if not rows:
+                rows = soup.select("div.fm_best_widget li")
+
+            found_in_page = 0
+            for row in rows:
+                try:
+                    title_el = row.select_one("a.hx") or row.select_one("td.title a") or row.select_one("h3.title a")
+                    if not title_el:
+                        continue
+
+                    href = title_el.get("href", "")
+                    if not href:
+                        continue
+                    if not href.startswith("http"):
+                        href = "https://www.fmkorea.com" + href
+
+                    title = title_el.get_text(strip=True)
+                    author_el = row.select_one("a.member_plate") or row.select_one("span.author")
+                    author = author_el.get_text(strip=True) if author_el else ""
+                    date_el = row.select_one("span.regdate") or row.select_one("td.time")
+                    date = date_el.get_text(strip=True) if date_el else ""
+
+                    posts.append({
+                        "url": href,
+                        "title": title,
+                        "date": date,
+                        "author": author,
+                    })
+                    found_in_page += 1
+                except Exception:
+                    continue
+
+            if found_in_page == 0:
+                break
+
+        return posts
 
     def get_post_list(self, board_url, max_pages):
         """에펨코리아 게시판에서 게시글 목록을 가져옵니다.

@@ -1,4 +1,6 @@
 import time
+import re
+from urllib.parse import quote, urlparse
 from crawler.base import BaseCrawler
 import config
 
@@ -10,6 +12,88 @@ class NaverBlogCrawler(BaseCrawler):
 
     def __init__(self):
         self.driver = None
+
+    def search_posts(self, board_url, keyword, max_pages):
+        """네이버 블로그 내에서 키워드를 검색합니다.
+
+        검색 URL: https://blog.naver.com/PostSearchList.naver?blogId=블로그아이디&searchText=키워드
+        """
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
+        self._ensure_driver()
+
+        # 블로그 ID 추출
+        # 예: https://blog.naver.com/blogid -> blogid
+        # 예: https://blog.naver.com/PostList.naver?blogId=blogid -> blogid
+        blog_id = ""
+        match = re.search(r"blogId=([^&]+)", board_url)
+        if match:
+            blog_id = match.group(1)
+        else:
+            path = urlparse(board_url).path.strip("/")
+            if path:
+                blog_id = path.split("/")[0]
+
+        if not blog_id:
+            print("    [경고] 블로그 ID를 찾을 수 없습니다.")
+            return []
+
+        posts = []
+        encoded_kw = quote(keyword)
+
+        for page in range(1, max_pages + 1):
+            search_url = (
+                f"https://blog.naver.com/PostSearchList.naver?"
+                f"blogId={blog_id}&searchText={encoded_kw}&currentPage={page}"
+            )
+
+            self.driver.get(search_url)
+            time.sleep(2)
+
+            try:
+                self.driver.switch_to.default_content()
+                iframe = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "mainFrame"))
+                )
+                self.driver.switch_to.frame(iframe)
+            except Exception:
+                pass
+
+            try:
+                # 검색 결과 항목들
+                links = self.driver.find_elements(
+                    By.CSS_SELECTOR,
+                    "a.url, span.title a, a.pcol2, table.search a, div.search_list a"
+                )
+
+                found_in_page = 0
+                for link in links:
+                    try:
+                        href = link.get_attribute("href") or ""
+                        title = link.text.strip()
+                        if not href or not title:
+                            continue
+                        if "blog.naver.com" not in href:
+                            continue
+                        if "PostSearchList" in href or "PostList" in href:
+                            continue
+
+                        posts.append({"url": href, "title": title, "date": ""})
+                        found_in_page += 1
+                    except Exception:
+                        continue
+
+                if found_in_page == 0:
+                    self.driver.switch_to.default_content()
+                    break
+            except Exception:
+                pass
+
+            self.driver.switch_to.default_content()
+
+        return posts
 
     def _ensure_driver(self):
         """Selenium 드라이버를 준비합니다."""

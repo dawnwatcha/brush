@@ -1,4 +1,5 @@
 import re
+from urllib.parse import quote
 from crawler.base import BaseCrawler
 from utils.http_client import fetch, fetch_json
 import config
@@ -8,6 +9,87 @@ class DcinsideCrawler(BaseCrawler):
     """디시인사이드 크롤러"""
 
     site_name = "디시인사이드"
+
+    def search_posts(self, board_url, keyword, max_pages):
+        """디시인사이드 갤러리 내에서 키워드를 검색합니다.
+
+        검색 URL: https://gall.dcinside.com/board/lists/?id=갤러리&s_type=search_subject_memo&s_keyword=키워드
+        s_type:
+          - search_subject_memo: 제목+내용
+          - search_subject: 제목만
+          - search_memo: 본문만
+          - search_name: 글쓴이
+        """
+        # 갤러리 ID 추출
+        if not board_url.startswith("http"):
+            gallery_id = board_url
+            board_url = f"https://gall.dcinside.com/board/lists/?id={gallery_id}"
+        else:
+            gallery_id = ""
+            if "id=" in board_url:
+                gallery_id = board_url.split("id=")[1].split("&")[0]
+
+        if not gallery_id:
+            print("    [경고] 갤러리 ID를 찾을 수 없습니다.")
+            return []
+
+        posts = []
+        encoded_kw = quote(keyword)
+
+        for page in range(1, max_pages + 1):
+            url = (
+                f"https://gall.dcinside.com/board/lists/?id={gallery_id}"
+                f"&s_type=search_subject_memo&s_keyword={encoded_kw}&page={page}"
+            )
+
+            soup = fetch(
+                url,
+                delay=config.DC_REQUEST_DELAY,
+                headers={"Referer": "https://gall.dcinside.com/"},
+            )
+            if soup is None:
+                continue
+
+            rows = soup.select("tr.ub-content.us-post")
+            if not rows:
+                break
+
+            for row in rows:
+                try:
+                    num_el = row.select_one("td.gall_num")
+                    if num_el and num_el.get_text(strip=True) in ("공지", "설문", "AD"):
+                        continue
+
+                    title_el = row.select_one("td.gall_tit a:not(.reply_numbox)")
+                    if not title_el:
+                        continue
+
+                    href = title_el.get("href", "")
+                    if not href.startswith("http"):
+                        href = "https://gall.dcinside.com" + href
+
+                    title = title_el.get_text(strip=True)
+
+                    writer_el = row.select_one("td.gall_writer")
+                    author = writer_el.get("data-nick", "") if writer_el else ""
+                    author_ip = writer_el.get("data-ip", "") if writer_el else ""
+
+                    date_el = row.select_one("td.gall_date")
+                    date = date_el.get("title", "") if date_el else ""
+                    if not date and date_el:
+                        date = date_el.get_text(strip=True)
+
+                    posts.append({
+                        "url": href,
+                        "title": title,
+                        "date": date,
+                        "author": author,
+                        "author_ip": author_ip,
+                    })
+                except Exception:
+                    continue
+
+        return posts
 
     def get_post_list(self, board_url, max_pages):
         """디시인사이드 갤러리에서 게시��� 목록을 가져옵니다.

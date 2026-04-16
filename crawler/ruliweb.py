@@ -1,3 +1,4 @@
+from urllib.parse import quote
 from crawler.base import BaseCrawler
 from utils.http_client import fetch
 
@@ -6,6 +7,69 @@ class RuliwebCrawler(BaseCrawler):
     """루리웹 크롤러"""
 
     site_name = "루리웹"
+
+    def search_posts(self, board_url, keyword, max_pages):
+        """루리웹 게시판 내에서 키워드를 검색합니다.
+
+        검색 URL: {board_url}?search_type=subject_content&search_key=키워드&page=N
+        search_type:
+          - subject: 제목만
+          - subject_content: 제목+내용
+          - nick: 글쓴이
+        """
+        # board_url에서 쿼리스트링 제거
+        base_url = board_url.split("?")[0]
+
+        posts = []
+        encoded_kw = quote(keyword)
+
+        for page in range(1, max_pages + 1):
+            url = (
+                f"{base_url}?page={page}"
+                f"&search_type=subject_content&search_key={encoded_kw}"
+            )
+
+            soup = fetch(url)
+            if soup is None:
+                continue
+
+            rows = soup.select("table.board_list_table tr.table_body, table.board_list_table tbody tr")
+            if not rows:
+                break
+
+            found_in_page = 0
+            for row in rows:
+                try:
+                    title_el = row.select_one("td.subject a.deco") or row.select_one("td.subject a")
+                    if not title_el:
+                        continue
+
+                    href = title_el.get("href", "")
+                    if not href:
+                        continue
+                    if not href.startswith("http"):
+                        href = "https://bbs.ruliweb.com" + href
+
+                    title = title_el.get_text(strip=True)
+                    author_el = row.select_one("td.writer a") or row.select_one("td.writer")
+                    author = author_el.get_text(strip=True) if author_el else ""
+                    date_el = row.select_one("td.time")
+                    date = date_el.get_text(strip=True) if date_el else ""
+
+                    posts.append({
+                        "url": href,
+                        "title": title,
+                        "date": date,
+                        "author": author,
+                    })
+                    found_in_page += 1
+                except Exception:
+                    continue
+
+            if found_in_page == 0:
+                break
+
+        return posts
 
     def get_post_list(self, board_url, max_pages):
         """루리웹 게시판에서 게시글 목록을 가져옵니다.

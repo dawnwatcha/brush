@@ -1,3 +1,4 @@
+from urllib.parse import quote, urlparse
 from crawler.base import BaseCrawler
 from utils.http_client import fetch
 
@@ -6,6 +7,64 @@ class ClienCrawler(BaseCrawler):
     """클리앙 크롤러"""
 
     site_name = "클리앙"
+
+    def search_posts(self, board_url, keyword, max_pages):
+        """클리앙 게시판 내에서 키워드를 검색합니다.
+
+        검색 URL: https://www.clien.net/service/search?q=키워드&sort=recency&boardCd=게시판코드&isBoard=true
+        """
+        # board_url에서 게시판 코드 추출
+        # 예: https://www.clien.net/service/board/park -> park
+        board_code = ""
+        path = urlparse(board_url).path
+        parts = [p for p in path.split("/") if p]
+        if "board" in parts:
+            idx = parts.index("board")
+            if idx + 1 < len(parts):
+                board_code = parts[idx + 1]
+
+        posts = []
+        encoded_kw = quote(keyword)
+
+        for page in range(max_pages):
+            if board_code:
+                url = (
+                    f"https://www.clien.net/service/search?q={encoded_kw}"
+                    f"&sort=recency&boardCd={board_code}&isBoard=true&p={page}"
+                )
+            else:
+                url = f"https://www.clien.net/service/search?q={encoded_kw}&sort=recency&p={page}"
+
+            soup = fetch(url)
+            if soup is None:
+                continue
+
+            items = soup.select("div.list_item, div.total_search div.list_item")
+
+            for item in items:
+                try:
+                    link_el = item.select_one("a.list_subject") or item.select_one("a")
+                    if not link_el or not link_el.get("href"):
+                        continue
+
+                    href = link_el["href"]
+                    if not href.startswith("http"):
+                        href = "https://www.clien.net" + href
+
+                    title_el = item.select_one("span.subject_fixed") or link_el
+                    title = title_el.get_text(strip=True)
+
+                    date_el = item.select_one("span.timestamp") or item.select_one("span.time")
+                    date = date_el.get_text(strip=True) if date_el else ""
+
+                    posts.append({"url": href, "title": title, "date": date})
+                except Exception:
+                    continue
+
+            if not items:
+                break
+
+        return posts
 
     def get_post_list(self, board_url, max_pages):
         """클리앙 게시판에서 게시글 목록을 가져옵니다.

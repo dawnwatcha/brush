@@ -1,4 +1,6 @@
 import time
+import re
+from urllib.parse import quote
 from crawler.base import BaseCrawler
 import config
 
@@ -10,6 +12,98 @@ class NaverCafeCrawler(BaseCrawler):
 
     def __init__(self):
         self.driver = None
+        self._cafe_id = None  # 카페 숫자 ID 캐시
+
+    def _get_cafe_id(self, board_url):
+        """카페 URL에서 숫자 ID(clubid)를 가져옵니다."""
+        from selenium.webdriver.common.by import By
+
+        if self._cafe_id:
+            return self._cafe_id
+
+        # board_url에 이미 clubid가 있는 경우
+        match = re.search(r"clubid=(\d+)", board_url)
+        if match:
+            self._cafe_id = match.group(1)
+            return self._cafe_id
+
+        # 없으면 카페 메인 페이지에 가서 가져오기
+        self.driver.get(board_url)
+        time.sleep(2)
+        html = self.driver.page_source
+        match = re.search(r"g_clubId\s*=\s*['\"]?(\d+)['\"]?", html)
+        if not match:
+            match = re.search(r"clubid=(\d+)", html)
+        if match:
+            self._cafe_id = match.group(1)
+            return self._cafe_id
+
+        return None
+
+    def search_posts(self, board_url, keyword, max_pages):
+        """네이버 카페 내에서 키워드를 검색합니다."""
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
+        self._ensure_driver()
+
+        cafe_id = self._get_cafe_id(board_url)
+        if not cafe_id:
+            print("    [경고] 카페 ID를 찾을 수 없습니다.")
+            return []
+
+        # 카페 베이스 URL 추출 (예: https://cafe.naver.com/카페명)
+        cafe_base = re.match(r"(https?://cafe\.naver\.com/[^/?]+)", board_url)
+        cafe_base_url = cafe_base.group(1) if cafe_base else "https://cafe.naver.com"
+
+        posts = []
+        encoded_kw = quote(keyword)
+
+        for page in range(1, max_pages + 1):
+            search_url = (
+                f"{cafe_base_url}?iframe_url_utf8=%2FArticleSearchList.nhn"
+                f"%3Fsearch.clubid%3D{cafe_id}"
+                f"%26search.searchBy%3D0"
+                f"%26search.query%3D{encoded_kw}"
+                f"%26search.page%3D{page}"
+            )
+
+            self.driver.get(search_url)
+            time.sleep(2)
+
+            try:
+                self.driver.switch_to.default_content()
+                iframe = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "cafe_main"))
+                )
+                self.driver.switch_to.frame(iframe)
+            except Exception:
+                continue
+
+            try:
+                rows = self.driver.find_elements(By.CSS_SELECTOR, "div.article-board a.article")
+                if not rows:
+                    rows = self.driver.find_elements(By.CSS_SELECTOR, "table.board-box tr a.article")
+
+                if not rows:
+                    self.driver.switch_to.default_content()
+                    break
+
+                for row in rows:
+                    try:
+                        href = row.get_attribute("href") or ""
+                        title = row.text.strip()
+                        if href and title:
+                            posts.append({"url": href, "title": title, "date": ""})
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            self.driver.switch_to.default_content()
+
+        return posts
 
     def _ensure_driver(self):
         """Selenium 드라이버를 준비하고 로그인합니다."""
