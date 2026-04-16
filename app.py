@@ -14,7 +14,6 @@ from crawler.dcinside import DcinsideCrawler
 from crawler.fmkorea import FmkoreaCrawler
 from crawler.ppomppu import PpomppuCrawler
 from crawler.ruliweb import RuliwebCrawler
-from crawler.naver_blog import NaverBlogCrawler
 
 
 SITES = {
@@ -45,12 +44,6 @@ SITES = {
     "디시인사이드 (통합검색)": {
         "class": DcinsideCrawler,
         "example": "https://gall.dcinside.com/board/lists/?id=programming",
-        "global_search": True,
-        "needs_url": False,
-    },
-    "네이버 블로그 (통합검색)": {
-        "class": NaverBlogCrawler,
-        "example": "https://blog.naver.com/블로그아이디",
         "global_search": True,
         "needs_url": False,
     },
