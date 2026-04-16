@@ -113,8 +113,22 @@ def fetch_json(url, delay=None, headers=None, data=None):
 
         _last_request_time = time.time()
         response.raise_for_status()
-        return response.json()
 
+        # JSON이 아닌 응답(에러 메시지 등)은 조용히 None 반환
+        text = response.text.strip()
+        if not text or not (text.startswith("{") or text.startswith("[")):
+            return None
+
+        try:
+            return response.json()
+        except ValueError:
+            # JSON 파싱 실패는 사이트의 접근 차단 메시지인 경우가 대부분
+            return None
+
+    except requests.exceptions.ConnectionError:
+        return None
+    except requests.exceptions.Timeout:
+        return None
     except Exception as e:
         print(f"  [오류] JSON 요청 실패: {e}")
         return None

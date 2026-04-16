@@ -220,18 +220,38 @@ class DcinsideCrawler(BaseCrawler):
         if not gallery_id or not post_no:
             return comments
 
-        # e_s_n_o 토큰 추출
+        # e_s_n_o 토큰은 hidden input에 있음
         e_s_n_o = ""
-        script_tags = soup.select("script")
-        for script in script_tags:
-            text = script.string or ""
-            match = re.search(r"e_s_n_o\s*=\s*['\"]([^'\"]+)['\"]", text)
-            if match:
-                e_s_n_o = match.group(1)
-                break
+        esno_input = soup.select_one("input[name=e_s_n_o]")
+        if esno_input:
+            e_s_n_o = esno_input.get("value", "")
+
+        if not e_s_n_o:
+            # 스크립트 내에도 있을 수 있으니 폴백
+            for script in soup.select("script"):
+                text = script.string or ""
+                match = re.search(r"e_s_n_o\s*=\s*['\"]([^'\"]+)['\"]", text)
+                if match:
+                    e_s_n_o = match.group(1)
+                    break
+
+        # URL로부터 갤러리 타입 판별
+        if "/mgallery/" in post_url:
+            gall_type = "M"
+        elif "/mini/" in post_url:
+            gall_type = "MI"
+        elif "/person/" in post_url:
+            gall_type = "P"
+        else:
+            gall_type = "G"
 
         # 댓글 페이지를 가져옴
         comment_url = "https://gall.dcinside.com/board/comment/"
+        comment_headers = {
+            "Referer": post_url,
+            "Origin": "https://gall.dcinside.com",
+        }
+
         for page in range(1, 6):  # 댓글 최대 5페이지
             data = {
                 "id": gallery_id,
@@ -240,13 +260,13 @@ class DcinsideCrawler(BaseCrawler):
                 "cmt_no": post_no,
                 "comment_page": str(page),
                 "e_s_n_o": e_s_n_o,
-                "_GALLTYPE_": "G",
+                "_GALLTYPE_": gall_type,
             }
 
             json_data = fetch_json(
                 comment_url,
                 delay=config.DC_REQUEST_DELAY,
-                headers={"Referer": post_url},
+                headers=comment_headers,
                 data=data,
             )
 
