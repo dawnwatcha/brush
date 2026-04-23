@@ -9,19 +9,11 @@ class PpomppuCrawler(BaseCrawler):
     site_name = "뽐뿌"
 
     def search_posts(self, board_url, keyword, max_pages):
-        """뽐뿌 게시판 내에서 키워드를 검색합니다.
+        """뽐뿌 전체 사이트에서 키워드를 검색합니다.
 
-        검색 URL: https://www.ppomppu.co.kr/search_bbs.php?search_type=sub_memo&keyword=키워드&bbs_cate=게시판&page_size=20
-        search_type:
-          - subject: 제목만
-          - sub_memo: 제목+내용
-          - nick: 글쓴이
+        검색 URL: https://www.ppomppu.co.kr/search_bbs.php?search_type=sub_memo&keyword=키워드&page_size=20
+        board_url은 무시됩니다 (전체 검색).
         """
-        # 게시판 ID 추출 (예: id=freeboard)
-        parsed = urlparse(board_url)
-        qs = parse_qs(parsed.query)
-        board_id = qs.get("id", [""])[0]
-
         posts = []
         encoded_kw = quote(keyword, encoding="utf-8")
 
@@ -29,38 +21,36 @@ class PpomppuCrawler(BaseCrawler):
             url = (
                 f"https://www.ppomppu.co.kr/search_bbs.php?"
                 f"search_type=sub_memo&keyword={encoded_kw}"
-                f"&bbs_cate={board_id}&page_size=20&page={page}"
+                f"&page_size=20&page={page}"
             )
 
-            soup = fetch(url, encoding="utf-8")
+            soup = fetch(url, encoding="euc-kr")
             if soup is None:
                 continue
 
-            # 검색 결과 항목들
-            items = soup.select("table.info_table tr") or soup.select("tr.baseList-border-bottom")
-            if not items:
-                # 다른 구조 시도
-                items = soup.select("div.search_result li, td.list_vspace")
-
+            # view.php 링크를 직접 찾아서 중복 제거
+            seen_urls = set()
             found_in_page = 0
-            for item in items:
+            for link in soup.select("a[href*='view.php']"):
                 try:
-                    link_el = item.select_one("a[href*='view.php'], a.list_b, a.baseList-title")
-                    if not link_el:
-                        continue
-
-                    href = link_el.get("href", "")
-                    if not href:
+                    href = link.get("href", "")
+                    if not href or "books/view.php" in href:
                         continue
                     if not href.startswith("http"):
-                        href = "https://www.ppomppu.co.kr/zboard/" + href.lstrip("/")
+                        href = "https://www.ppomppu.co.kr" + href if href.startswith("/") else "https://www.ppomppu.co.kr/zboard/" + href
 
-                    title = link_el.get_text(strip=True)
+                    # 쿼리스트링에서 keyword 파라미터 제거하여 정규화
+                    clean_url = href.split("&keyword=")[0]
+                    if clean_url in seen_urls:
+                        continue
+
+                    title = link.get_text(strip=True)
                     if not title:
                         continue
 
+                    seen_urls.add(clean_url)
                     posts.append({
-                        "url": href,
+                        "url": clean_url,
                         "title": title,
                         "date": "",
                         "author": "",

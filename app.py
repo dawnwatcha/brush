@@ -14,39 +14,18 @@ from crawler.dcinside import DcinsideCrawler
 from crawler.fmkorea import FmkoreaCrawler
 from crawler.ppomppu import PpomppuCrawler
 from crawler.ruliweb import RuliwebCrawler
+from crawler.naver_blog import NaverBlogCrawler
+from crawler.naver_cafe import NaverCafeCrawler
 
 
 SITES = {
-    "클리앙": {
-        "class": ClienCrawler,
-        "example": "https://www.clien.net/service/board/park",
-        "global_search": False,
-        "needs_url": True,
-    },
-    "뽐뿌": {
-        "class": PpomppuCrawler,
-        "example": "https://www.ppomppu.co.kr/zboard/zboard.php?id=freeboard",
-        "global_search": False,
-        "needs_url": True,
-    },
-    "루리웹": {
-        "class": RuliwebCrawler,
-        "example": "https://bbs.ruliweb.com/community/board/300143",
-        "global_search": False,
-        "needs_url": True,
-    },
-    "에펨코리아": {
-        "class": FmkoreaCrawler,
-        "example": "https://www.fmkorea.com/best",
-        "global_search": False,
-        "needs_url": True,
-    },
-    "디시인사이드 (통합검색)": {
-        "class": DcinsideCrawler,
-        "example": "https://gall.dcinside.com/board/lists/?id=programming",
-        "global_search": True,
-        "needs_url": False,
-    },
+    "네이버 카페": {"class": NaverCafeCrawler},
+    "네이버 블로그": {"class": NaverBlogCrawler},
+    "디시인사이드": {"class": DcinsideCrawler},
+    "에펨코리아": {"class": FmkoreaCrawler},
+    "루리웹": {"class": RuliwebCrawler},
+    "뽐뿌": {"class": PpomppuCrawler},
+    "클리앙": {"class": ClienCrawler},
 }
 
 
@@ -141,24 +120,10 @@ with st.sidebar:
     st.markdown("---")
 
     keywords_input = st.text_input(
-        "키워드 (쉼표로 구분)",
+        "키워드 (쉼표로 구분) *",
         placeholder="예: 맛집, 추천",
-        help="여러 키워드는 쉼표로 구분하세요. 비워두면 전체 게시글을 가져옵니다.",
+        help="여러 키워드는 쉼표로 구분하세요. 모든 사이트가 통합검색을 사용합니다.",
     )
-
-    if site["global_search"]:
-        st.info("통합검색 사이트입니다. 키워드만 입력해도 됩니다.")
-        board_url = st.text_input(
-            "게시판 URL (선택)",
-            placeholder=site["example"],
-            help="비워두면 전체 사이트에서 키워드를 검색합니다.",
-        )
-    else:
-        board_url = st.text_input(
-            "게시판 URL *",
-            placeholder=site["example"],
-            help="크롤링할 게시판의 주소를 입력하세요.",
-        )
 
     max_pages = st.slider("최대 페이지 수", 1, 10, 3, help="더 많을수록 시간이 오래 걸립니다.")
 
@@ -175,9 +140,11 @@ if not start:
         **사용 방법**
         1. 왼쪽 사이드바에서 크롤링할 사이트를 선택합니다.
         2. 키워드를 입력합니다 (여러 개는 쉼표로 구분).
-        3. 일반 사이트는 게시판 URL을 입력해야 합니다. 통합검색 사이트는 선택사항입니다.
-        4. 최대 페이지 수를 조정하고 **크롤링 시작** 버튼을 누릅니다.
-        5. 결과 테이블을 확인하고 엑셀 파일로 다운로드할 수 있습니다.
+        3. 최대 페이지 수를 조정하고 **크롤링 시작** 버튼을 누릅니다.
+        4. 결과 테이블을 확인하고 엑셀 파일로 다운로드할 수 있습니다.
+
+        모든 사이트는 **통합검색** 방식으로 동작합니다.
+        게시판 URL 입력 없이 키워드만으로 전체 사이트에서 검색합니다.
 
         **⚠️ 주의사항**
         - 개인 학습 / 연구 목적으로만 사용하세요.
@@ -185,21 +152,16 @@ if not start:
         - 요청 간격이 자동으로 조절되므로 너무 많은 페이지를 한번에 요청하지 마세요.
         """)
 
-    with st.expander("✨ 지원 사이트"):
-        for name, info in SITES.items():
-            tag = "🌐 전체 검색" if info["global_search"] else "📋 게시판 검색"
-            st.markdown(f"- **{name}** {tag}")
+    with st.expander("✨ 지원 사이트 (7개)"):
+        for name in SITES:
+            st.markdown(f"- **{name}** 🌐 통합검색")
 
 else:
     # 입력 검증
-    if not site["global_search"] and not board_url:
-        st.error("❌ 이 사이트는 게시판 URL이 필수입니다.")
-        st.stop()
-
     keywords = [k.strip() for k in keywords_input.split(",") if k.strip()]
 
-    if site["global_search"] and not board_url and not keywords:
-        st.error("❌ 통합검색 사이트는 URL이나 키워드 중 하나는 입력해야 합니다.")
+    if not keywords:
+        st.error("❌ 키워드를 입력해주세요.")
         st.stop()
 
     # 크롤링 실행
@@ -207,16 +169,13 @@ else:
         try:
             crawler = site["class"]()
             st.write(f"**사이트:** {site_name}")
-            if board_url:
-                st.write(f"**URL:** {board_url}")
-            if keywords:
-                st.write(f"**키워드:** {', '.join(keywords)}")
+            st.write(f"**키워드:** {', '.join(keywords)}")
             st.write(f"**최대 페이지:** {max_pages}")
 
             # 크롤링 수행
             with st.spinner("게시글을 수집하는 중입니다. 잠시만 기다려주세요..."):
                 results = crawler.crawl(
-                    board_url=board_url or "",
+                    board_url="",
                     keywords=keywords,
                     max_pages=max_pages,
                 )

@@ -9,31 +9,16 @@ class ClienCrawler(BaseCrawler):
     site_name = "클리앙"
 
     def search_posts(self, board_url, keyword, max_pages):
-        """클리앙 게시판 내에서 키워드를 검색합니다.
+        """클리앙 전체 사이트에서 키워드를 검색합니다.
 
-        검색 URL: https://www.clien.net/service/search?q=키워드&sort=recency&boardCd=게시판코드&isBoard=true
+        검색 URL: https://www.clien.net/service/search?q=키워드&sort=recency
+        board_url은 무시됩니다 (전체 검색).
         """
-        # board_url에서 게시판 코드 추출
-        # 예: https://www.clien.net/service/board/park -> park
-        board_code = ""
-        path = urlparse(board_url).path
-        parts = [p for p in path.split("/") if p]
-        if "board" in parts:
-            idx = parts.index("board")
-            if idx + 1 < len(parts):
-                board_code = parts[idx + 1]
-
         posts = []
         encoded_kw = quote(keyword)
 
         for page in range(max_pages):
-            if board_code:
-                url = (
-                    f"https://www.clien.net/service/search?q={encoded_kw}"
-                    f"&sort=recency&boardCd={board_code}&isBoard=true&p={page}"
-                )
-            else:
-                url = f"https://www.clien.net/service/search?q={encoded_kw}&sort=recency&p={page}"
+            url = f"https://www.clien.net/service/search?q={encoded_kw}&sort=recency&p={page}"
 
             soup = fetch(url)
             if soup is None:

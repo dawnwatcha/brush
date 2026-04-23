@@ -9,34 +9,17 @@ class FmkoreaCrawler(BaseCrawler):
     site_name = "에펨코리아"
 
     def search_posts(self, board_url, keyword, max_pages):
-        """에펨코리아 게시판 내에서 키워드를 검색합니다.
+        """에펨코리아 전체 사이트에서 키워드를 검색합니다.
 
-        검색 URL 예시:
-        https://www.fmkorea.com/index.php?mid=best&search_keyword=키워드&search_target=title_content
+        검색 URL: https://www.fmkorea.com/index.php?mid=index&search_keyword=키워드&search_target=title_content
+        board_url은 무시됩니다 (전체 검색).
         """
-        # 게시판 mid 추출
-        # 예: https://www.fmkorea.com/best -> mid=best
-        # 예: https://www.fmkorea.com/index.php?mid=football -> mid=football
-        parsed = urlparse(board_url)
-        mid = ""
-
-        qs = parse_qs(parsed.query)
-        if "mid" in qs:
-            mid = qs["mid"][0]
-        elif parsed.path and parsed.path != "/":
-            # path가 /best 형식인 경우
-            mid = parsed.path.strip("/").split("/")[0]
-
-        if not mid:
-            print("    [경고] 게시판 ID(mid)를 찾을 수 없습니다.")
-            return []
-
         posts = []
         encoded_kw = quote(keyword)
 
         for page in range(1, max_pages + 1):
             url = (
-                f"https://www.fmkorea.com/index.php?mid={mid}"
+                f"https://www.fmkorea.com/index.php?mid=index"
                 f"&search_keyword={encoded_kw}&search_target=title_content&page={page}"
             )
 
