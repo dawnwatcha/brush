@@ -1,4 +1,5 @@
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import config
 from utils.filters import matches_keywords
 
@@ -57,30 +58,35 @@ class BaseCrawler:
             print("  게시글을 찾지 못했습니다.")
             return []
 
-        # 2단계: 각 게시글 상세 정보 가져오기
+        # 2단계: 각 게시글 상세 정보를 동시에 가져오기
         results = []
         total = len(post_list)
         failed = 0
+        max_workers = getattr(config, "MAX_WORKERS", 4)
 
-        print(f"  {total}개의 게시글 상세 정보를 가져옵니다...")
+        print(f"  {total}개의 게시글 상세 정보를 가져옵니다... (동시 {max_workers}개)")
 
-        for i, post in enumerate(post_list, 1):
-            print(f"  게시글 처리 중... ({i}/{total})", end="\r")
-
+        def _fetch_detail(post):
             try:
-                detail = self.get_post_detail(post["url"])
+                return self.get_post_detail(post["url"])
+            except Exception:
+                return None
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_fetch_detail, post): post for post in post_list}
+            done_count = 0
+
+            for future in as_completed(futures):
+                done_count += 1
+                print(f"  게시글 처리 중... ({done_count}/{total})", end="\r")
+
+                detail = future.result()
                 if detail is None:
                     failed += 1
                     continue
 
-                # 사이트 검색이 부정확할 수 있으므로 본문/댓글까지 한번 더 확인
                 if matches_keywords(detail, keywords):
                     results.append(detail)
-
-            except Exception as e:
-                print(f"\n  [경고] 게시글 처리 실패: {e}")
-                failed += 1
-                continue
 
         print(f"\n  완료: {len(results)}개 수집, {failed}개 실패")
         return results
